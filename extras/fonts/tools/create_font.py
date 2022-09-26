@@ -49,21 +49,21 @@ def main(args):
     else:
     # use a truetype font
         fnt = ImageFont.truetype(args.font, args.size)
-    
+
     size = fnt.getsize('A')
 
     im = Image.new('RGB', size)
     draw = ImageDraw.Draw(im)
-    
+
     if args.last - args.first < 1:
         raise ValueError('Invalid --first or --last')
-    
+
     chars = []
     for idx in range(args.last - args.first + 1):
         draw.rectangle(((0, 0), size), fill = 0)
         draw.text((0, 0), chr(idx + args.first), font=fnt)
         chars.append(gen_char(idx, idx + args.first, im.convert('1')))
-        
+
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(os.path.abspath(__file__))), finalize=lambda x: '' if x is None else x)
     print(env.get_template(args.template).render({
         'font': {

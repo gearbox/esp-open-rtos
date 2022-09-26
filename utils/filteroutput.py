@@ -23,13 +23,14 @@ RE_EXECADDR = r"(0x)?40([0-9]|[a-z]){6}"
 def find_elf_file():
     out_files = []
     for top,_,files in os.walk('.', followlinks=False):
-        for f in files:
-            if f.endswith(".out"):
-                out_files.append(os.path.join(top,f))
+        out_files.extend(os.path.join(top,f) for f in files if f.endswith(".out"))
     if len(out_files) == 1:
         return out_files[0]
     elif len(out_files) > 1:
-        print("Found multiple .out files: %s. Please specify one with the --elf option." % out_files)
+        print(
+            f"Found multiple .out files: {out_files}. Please specify one with the --elf option."
+        )
+
     else:
         print("No .out file found under current directory. Please specify one with the --elf option.")
     sys.exit(1)

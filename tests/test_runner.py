@@ -16,7 +16,7 @@ RESET_RETRIES = 10  # retries to receive test runner banner after reset
 
 
 def run(env_a, env_b, cases):
-    counts = dict((status, 0) for status in TestResult.STATUS_NAMES.keys())
+    counts = {status: 0 for status in TestResult.STATUS_NAMES.keys()}
     failures = False
     for test in cases:
         if test.case_type == 'dual':
@@ -29,7 +29,7 @@ def run(env_a, env_b, cases):
         counts[res.status] += 1
         failures = failures or res.is_failure()
 
-    print("%20s: %d" % ("Total tests", sum(c for c in counts.values())))
+    print("%20s: %d" % ("Total tests", sum(counts.values())))
     print()
     # print status counts for tests
     for c in sorted(counts.keys()):
@@ -92,10 +92,7 @@ class TestCase(object):
         sys.stdout.write("Running test case '%s'...%s" % (self.name, "\n" if verbose else " "*(40-len(self.name))))
         mon_a = env_a.start_testcase(self)
         mon_b = env_b.start_testcase(self) if env_b else None
-        while True:
-            if mon_a.get_result() and (mon_b is None or mon_b.get_result()):
-                break  # all running test environments have finished
-
+        while not (mon_a.get_result() and (mon_b is None or mon_b.get_result())):
             # or, in the case both are running, stop as soon as either environemnt shows a failure
             try:
                 if mon_a.get_result().is_failure():
@@ -151,16 +148,10 @@ class TestResult(object):
         return self.status >= TestResult.FAILED
 
     def __qe__(self, other):
-        if other is None:
-            return False
-        else:
-            return self.status == other.status
+        return False if other is None else self.status == other.status
 
     def __lt__(self, other):
-        if other is None:
-            return False
-        else:
-            return self.status < other.status
+        return False if other is None else self.status < other.status
 
 
 class TestMonitor(object):
@@ -207,10 +198,11 @@ class TestMonitor(object):
                 elif line == TESTRUNNER_BANNER:
                     self._result = TestResult(TestResult.ERROR, "Test caused crash and reset.")
                     return
-            if not self._cancelled:
-                self._result = TestResult(TestResult.CANCELLED, "Cancelled")
-            else:
-                self._result = TestResult(TestResult.ERROR, "Test timed out")
+            self._result = (
+                TestResult(TestResult.ERROR, "Test timed out")
+                if self._cancelled
+                else TestResult(TestResult.CANCELLED, "Cancelled")
+            )
 
         finally:
             self._port.timeout = None
@@ -236,11 +228,9 @@ class TestEnvironment(object):
             verbose_print("Waiting for test runner startup...")
             if self._port.wait_line(lambda line: line == TESTRUNNER_BANNER):
                 return
-            else:
-                verbose_print("Retrying to reset the test board, attempt=%d" %
-                              (i + 1))
-                continue
-            raise TestRunnerError("Port %s failed to start test runner" % self._port)
+            verbose_print("Retrying to reset the test board, attempt=%d" %
+                          (i + 1))
+            continue
 
     def get_testlist(self):
         """ Resets the test board and returns the enumerated list of all supported tests """
@@ -249,15 +239,16 @@ class TestEnvironment(object):
         verbose_print("Enumerating tests...")
 
         def collect_testcases(line):
-                if line.startswith(">"):
-                    return True  # prompt means list of test cases is done, success
-                m = re.match(r"CASE (\d+) = (.+?) ([A-Z]+)", line)
-                if m is not None:
-                    t = TestCase(int(m.group(1)), m.group(2), m.group(3).lower())
-                    verbose_print(t)
-                    tests.append(t)
+            if line.startswith(">"):
+                return True  # prompt means list of test cases is done, success
+            m = re.match(r"CASE (\d+) = (.+?) ([A-Z]+)", line)
+            if m is not None:
+                t = TestCase(int(m[1]), m[2], m[3].lower())
+                verbose_print(t)
+                tests.append(t)
+
         if not self._port.wait_line(collect_testcases):
-            raise TestRunnerError("Port %s failed to read test list" % self._port)
+            raise TestRunnerError(f"Port {self._port} failed to read test list")
         verbose_print("Port %s found %d test cases" % (self._name, len(tests)))
         return tests
 
@@ -288,7 +279,7 @@ def flash_image(serial_port):
     # just use the Makefile flash target with the correct ESPPORT argument
     env = dict(os.environ)
     env["ESPPORT"] = serial_port
-    verbose_print("Building and flashing test image to %s..." % serial_port)
+    verbose_print(f"Building and flashing test image to {serial_port}...")
     try:
         stdout = sys.stdout if verbose else None
         subprocess.check_call(["make", "flash"], cwd=get_testdir(),
